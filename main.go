@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 )
 
 var DefaultRules = map[string]string{
@@ -76,6 +79,52 @@ func (fo *FileOrganizer) Close() error {
 	return err
 }
 
+func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
+	err := fo.initLog()
+
+	if err != nil {
+		return fmt.Errorf("Ошибка инициализации логирования: %w", err)
+	}
+
+	_, err = os.Stat(sourcePath)
+
+	if err != nil {
+		return fmt.Errorf("ошибка отсутствия исходного файла: %w", err)
+	}
+	fo.logSuccess("Исходный файл: " + sourcePath)
+	fullPath := filepath.Join(fo.sourceDir, targetDir)
+	err = os.MkdirAll(fullPath, 0644)
+
+	if err != nil {
+		return fmt.Errorf("ошибка создания директории: %w", err)
+	}
+	_, err = os.Stat(sourcePath)
+
+	if err != nil {
+		return fmt.Errorf("исходный файл отсутствует ошибка: %w", err)
+	}
+	name := filepath.Base(sourcePath)
+	ext := filepath.Ext(sourcePath)
+	newPath := filepath.Join(fullPath, name)
+	_, err = os.Stat(newPath)
+
+	if err == nil {
+		fo.logSuccess("Существующий: " + newPath)
+		newPath = strings.TrimSuffix(newPath, ext) + "_" + time.Now().Format("2006-01-02_15-04-05") + ext
+	} else {
+		fo.logSuccess("Целевая папка: " + targetDir)
+	}
+
+	fmt.Println(newPath)
+	err = os.Rename(sourcePath, newPath)
+
+	if err != nil {
+		return fmt.Errorf("ошибка перемещения файла: %w", err)
+	}
+	fo.logSuccess("Результат: " + newPath)
+	return nil
+}
+
 func main() {
 	organizer, err := NewFileOrganizer("/home/neo")
 	if err != nil {
@@ -83,13 +132,10 @@ func main() {
 		return
 	}
 	fmt.Println("FileOrganizer создан для директории:", organizer.sourceDir)
-	err = organizer.initLog()
 
+	err = organizer.moveFile("/home/neo/greet01.s", "go_tst")
 	if err != nil {
-		fmt.Println(err.Error())
+		fmt.Println(err)
 		return
 	}
-	defer organizer.Close()
-
-	organizer.logSuccess("lol kek piza cheburek")
 }
