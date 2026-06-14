@@ -30,110 +30,100 @@ type FileOrganizer struct {
 	rulesMap       map[string]string
 	processedFiles int
 	logFile        *os.File
+	logger         *log.Logger
 }
 
 func NewFileOrganizer(sourceDir string) (*FileOrganizer, error) {
 	if sourceDir == "" {
-		return nil, fmt.Errorf("sourceDir не может быть пустым")
+		sourceDir = "/home/neo/srcd"
 	}
 
 	fileInfo, err := os.Stat(sourceDir)
 	if err != nil {
 		return nil, fmt.Errorf("не удалось получить информацию о %q: %w", sourceDir, err)
 	}
+
 	if !fileInfo.IsDir() {
 		return nil, fmt.Errorf("%q не является директорией", sourceDir)
 	}
 
+	logFile, err := os.OpenFile("organizer.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось открыть лог файл: %w", err)
+	}
+
+	logger := log.New(logFile, "", log.LstdFlags)
+
 	return &FileOrganizer{
 		sourceDir: sourceDir,
 		rulesMap:  DefaultRules,
+		logFile:   logFile,
+		logger:    logger,
 	}, nil
 }
 
-func (fo *FileOrganizer) initLog() error {
-	file, err := os.OpenFile("organizer.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("открытие лога: %w", err)
-	}
-	fo.logFile = file
-
-	log.SetOutput(fo.logFile)
-	return nil
-}
-
 func (fo *FileOrganizer) logSuccess(message string) {
-	log.Println("[SUCCESS]", message)
+	fo.logger.Println("[SUCCESS]", message)
 }
 
 func (fo *FileOrganizer) logError(message string) {
-	log.Println("[ERROR]", message)
+	fo.logger.Println("[ERROR]", message)
 }
 
 func (fo *FileOrganizer) Close() error {
 	if fo.logFile == nil {
 		return nil
 	}
+
 	err := fo.logFile.Close()
+	log.SetOutput(os.Stdout)
 	fo.logFile = nil
 	return err
 }
 
 func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
-	err := fo.initLog()
-
+	_, err := os.Stat(sourcePath)
 	if err != nil {
-		return fmt.Errorf("Ошибка инициализации логирования: %w", err)
+		return fmt.Errorf("ошибка существования файла %w", err)
 	}
 
-	_, err = os.Stat(sourcePath)
-
-	if err != nil {
-		return fmt.Errorf("ошибка отсутствия исходного файла: %w", err)
-	}
-	fo.logSuccess("Исходный файл: " + sourcePath)
-	fullPath := filepath.Join(fo.sourceDir, targetDir)
-	err = os.MkdirAll(fullPath, 0644)
-
+	fo.logSuccess("Исходный файл:" + sourcePath)
+	fullTargetDir := filepath.Join(fo.sourceDir, targetDir)
+	err = os.MkdirAll(fullTargetDir, os.ModePerm)
 	if err != nil {
 		return fmt.Errorf("ошибка создания директории: %w", err)
 	}
-	_, err = os.Stat(sourcePath)
 
-	if err != nil {
-		return fmt.Errorf("исходный файл отсутствует ошибка: %w", err)
-	}
-	name := filepath.Base(sourcePath)
-	ext := filepath.Ext(sourcePath)
-	newPath := filepath.Join(fullPath, name)
-	_, err = os.Stat(newPath)
-
+	fileName := filepath.Base(sourcePath)
+	ext := filepath.Ext(fileName)
+	fullPath := filepath.Join(fullTargetDir, fileName)
+	_, err = os.Stat(fullPath)
 	if err == nil {
-		fo.logSuccess("Существующий: " + newPath)
-		newPath = strings.TrimSuffix(newPath, ext) + "_" + time.Now().Format("2006-01-02_15-04-05") + ext
+		fo.logSuccess("Существующий:" + fullPath)
+		fullPath = strings.TrimSuffix(fullPath, ext) + "_" + time.Now().Format("2006-01-02_15-04-05") + ext
 	} else {
 		fo.logSuccess("Целевая папка: " + targetDir)
 	}
-
-	fmt.Println(newPath)
-	err = os.Rename(sourcePath, newPath)
-
+	err = os.Rename(sourcePath, fullPath)
 	if err != nil {
 		return fmt.Errorf("ошибка перемещения файла: %w", err)
 	}
-	fo.logSuccess("Результат: " + newPath)
+
+	fo.logSuccess("Результат: " + fullPath)
 	return nil
 }
 
 func main() {
-	organizer, err := NewFileOrganizer("/home/neo")
+	organizer, err := NewFileOrganizer("/home/neo/srcd")
 	if err != nil {
 		fmt.Println("Ошибка:", err)
 		return
 	}
-	fmt.Println("FileOrganizer создан для директории:", organizer.sourceDir)
+	defer organizer.Close()
 
-	err = organizer.moveFile("/home/neo/greet01.s", "go_tst")
+	fileName := "/home/neo/photo1.jpg"
+	organizer.logSuccess("FileOrganizer создан для директории:" + organizer.sourceDir)
+	err = organizer.moveFile(fileName, "Huimages")
 	if err != nil {
 		fmt.Println(err)
 		return
