@@ -84,6 +84,7 @@ func (fo *FileOrganizer) Close() error {
 func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
 	_, err := os.Stat(sourcePath)
 	if err != nil {
+		fo.logError(err.Error())
 		return fmt.Errorf("ошибка существования файла %w", err)
 	}
 
@@ -91,6 +92,7 @@ func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
 	fullTargetDir := filepath.Join(fo.sourceDir, targetDir)
 	err = os.MkdirAll(fullTargetDir, os.ModePerm)
 	if err != nil {
+		fo.logError(err.Error())
 		return fmt.Errorf("ошибка создания директории: %w", err)
 	}
 
@@ -106,6 +108,7 @@ func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
 	}
 	err = os.Rename(sourcePath, fullPath)
 	if err != nil {
+		fo.logError(err.Error())
 		return fmt.Errorf("ошибка перемещения файла: %w", err)
 	}
 
