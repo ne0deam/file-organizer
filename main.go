@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -30,7 +31,6 @@ type FileOrganizer struct {
 	rulesMap       map[string]string
 	processedFiles int
 	logFile        *os.File
-	logger         *log.Logger
 }
 
 func NewFileOrganizer(sourceDir string) (*FileOrganizer, error) {
@@ -47,27 +47,18 @@ func NewFileOrganizer(sourceDir string) (*FileOrganizer, error) {
 		return nil, fmt.Errorf("%q не является директорией", sourceDir)
 	}
 
-	logFile, err := os.OpenFile("organizer.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("не удалось открыть лог файл: %w", err)
-	}
-
-	logger := log.New(logFile, "", log.LstdFlags)
-
 	return &FileOrganizer{
 		sourceDir: sourceDir,
 		rulesMap:  DefaultRules,
-		logFile:   logFile,
-		logger:    logger,
 	}, nil
 }
 
 func (fo *FileOrganizer) logSuccess(message string) {
-	fo.logger.Println("[SUCCESS]", message)
+	log.Println("[SUCCESS]", message)
 }
 
 func (fo *FileOrganizer) logError(message string) {
-	fo.logger.Println("[ERROR]", message)
+	log.Println("[ERROR]", message)
 }
 
 func (fo *FileOrganizer) Close() error {
@@ -116,6 +107,53 @@ func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
 	return nil
 }
 
+func (fo *FileOrganizer) initLog() (*os.File, error) {
+	logFile, err := os.OpenFile("organizer.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("не удалось открыть лог файл: %w", err)
+	}
+	log.SetOutput(logFile)
+	return logFile, err
+}
+
+func (fo *FileOrganizer) Organize() error {
+	fo.initLog()
+	err := filepath.WalkDir(fo.sourceDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			return nil // пропускаем директории
+		}
+
+		// обработка файла
+		fmt.Println(path)
+		if filepath.Dir(path) != fo.sourceDir {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(path))
+		if dir, ok := fo.rulesMap[ext]; ok {
+			err := fo.moveFile(path, dir)
+			if err != nil {
+				fo.logError(err.Error())
+				return err
+			}
+
+			fo.processedFiles += 1
+		}
+
+		return nil
+	})
+	if err != nil {
+		fo.logError(err.Error())
+		return err
+	}
+
+	return nil
+}
+
 func main() {
 	organizer, err := NewFileOrganizer("/home/neo/srcd")
 	if err != nil {
@@ -124,9 +162,8 @@ func main() {
 	}
 	defer organizer.Close()
 
-	fileName := "/home/neo/photo1.jpg"
-	organizer.logSuccess("FileOrganizer создан для директории:" + organizer.sourceDir)
-	err = organizer.moveFile(fileName, "Huimages")
+	organizer.initLog()
+	err = organizer.Organize()
 	if err != nil {
 		fmt.Println(err)
 		return
